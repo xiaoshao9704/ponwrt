@@ -1,0 +1,135 @@
+name: Build Gemtek XG2010G
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: Create a GitHub Release with the built firmware
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: Optional release tag (defaults to xg2010g-YYYYMMDD-shortsha)
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-xg2010g-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Gemtek XG2010G
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Free build space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk \
+            gettext git g++-multilib gcc-multilib gperf help2man intltool \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev \
+            libtool libyaml-dev lld llvm ninja-build p7zip-full patch pkgconf \
+            python3 python3-docutils python3-pip python3-ply python3-pyelftools \
+            qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: ponwrt-xg2010g-dl-${{ hashFiles('feeds.conf.default', 'configs/xg2010g.config') }}
+          restore-keys: |
+            ponwrt-xg2010g-dl-
+
+      - name: Install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure XG2010G
+        run: |
+          cp configs/xg2010g.config .config
+          make defconfig
+
+      - name: Verify boot-safety kernel config invariants
+        run: |
+          cfg="target/linux/airoha/an7581/config-6.18"
+          for sym in CONFIG_AIROHA_CPU_PM_DOMAIN CONFIG_ARM_AIROHA_SOC_CPUFREQ CONFIG_CPU_FREQ CONFIG_MTD_UBI_FASTMAP CONFIG_RANDOMIZE_BASE; do
+            if grep -Eq "^${sym}=y$" "$cfg"; then
+              echo "ERROR: ${sym}=y must be disabled in ${cfg} for XG2010G boot safety"
+              exit 1
+            fi
+          done
+          echo "Kernel boot-safety config checks passed."
+
+      - name: Download sources
+        run: make download -j"$(nproc)"
+
+      - name: Build firmware
+        run: |
+          if ! make -j"$(nproc)"; then
+            echo "Parallel build failed; retrying single-threaded with V=s..."
+            make -j1 V=s
+          fi
+
+      - name: Collect firmware outputs
+        id: collect
+        run: |
+          out_dir="release-xg2010g"
+          mkdir -p "$out_dir"
+          src_dir="bin/targets/airoha/an7581"
+          cp -v "$src_dir"/*gemtek_xg2010g* "$out_dir"/
+          if [ -f "$src_dir"/sha256sums ]; then
+            grep -E "gemtek_xg2010g" "$src_dir"/sha256sums > "$out_dir"/sha256sums || true
+          fi
+          (cd "$out_dir" && sha256sum *gemtek_xg2010g* > sha256sums)
+          ls -lh "$out_dir"
+
+          short_sha="$(git rev-parse --short=8 HEAD)"
+          default_tag="xg2010g-$(date -u +%Y%m%d)-${short_sha}"
+          tag="${{ inputs.release_tag }}"
+          if [ -z "$tag" ]; then
+            tag="$default_tag"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ponwrt-xg2010g-${{ steps.collect.outputs.tag }}
+          path: release-xg2010g/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: inputs.create_release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.collect.outputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            release-xg2010g/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PonWrt XG2010G $RELEASE_TAG" \
+            --prerelease \
+            --generate-notes

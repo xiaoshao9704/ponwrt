@@ -110,6 +110,7 @@ define Device/gemtek_xg2010g
   DEVICE_VENDOR := Gemtek
   DEVICE_MODEL := XG2010G
   DEVICE_DTS := an7581-gemtek-xg2010g
+  SUPPORTED_DEVICES += gemtek,xg2010g-ubi gemtek,xg2010g
   KERNEL_LOADADDR := 0x8a000000
   BLOCKSIZE := 128k
   PAGESIZE := 2048
