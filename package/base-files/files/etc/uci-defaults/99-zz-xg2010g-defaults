@@ -3,6 +3,7 @@
 # Default XG2010G:
 # 1. Default LuCI language to Simplified Chinese (run after 99-default-settings).
 # 2. Enable Airoha PPE hardware flow offloading in firewall4 by default on fresh boot.
+# 3. Set sensible defaults on out-of-the-box PPPoE wan/wan6 interfaces.
 
 case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
 	gemtek,xg2010g|gemtek,xg2010g-ubi|gemtek,xg2010g-2g-ubi) ;;
@@ -28,6 +29,25 @@ if [ -f /etc/config/firewall ]; then
 		changed=1
 	fi
 	[ "$changed" -eq 1 ] && uci commit firewall
+fi
+
+if [ -f /etc/config/network ] && [ "$(uci -q get network.wan.proto)" = "pppoe" ]; then
+	net_changed=0
+	if [ -z "$(uci -q get network.wan.keepalive)" ]; then
+		uci set network.wan.keepalive='5 5'
+		net_changed=1
+	fi
+	if [ "$(uci -q get network.wan6.device)" = "@wan" ]; then
+		if [ -z "$(uci -q get network.wan6.reqaddress)" ]; then
+			uci set network.wan6.reqaddress='try'
+			net_changed=1
+		fi
+		if [ -z "$(uci -q get network.wan6.reqprefix)" ]; then
+			uci set network.wan6.reqprefix='auto'
+			net_changed=1
+		fi
+	fi
+	[ "$net_changed" -eq 1 ] && uci commit network
 fi
 
 exit 0

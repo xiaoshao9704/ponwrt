@@ -18,6 +18,7 @@
 3. **开箱默认项**
    - 默认主机名：`XG2010G`
    - 默认语言 / 时区：`zh_cn`（简体中文）、`Asia/Shanghai (CST-8)`
+   - 默认 WAN 接口：出厂即为 `pppoe`（`ipv6='1'`、`keepalive='5 5'`）+ `wan6`（`device='@wan'`、`reqaddress='try'`、`reqprefix='auto'`），改 VLAN 时 `wan6` 自动跟随无需重配，且不会触发双 `odhcp6c`
    - 默认开启防火墙软件与 PPE 硬件流量卸载（`flow_offloading='1'`、`flow_offloading_hw='1'`）
    - 内置 `luci-app-pon`、`airoha-pon-debug`、AN7581 EIP93 硬件加密（`kmod-crypto-hw-eip93` + `cryptodev`）、FullCone NAT、WireGuard、CAKE、BBR 及常用网络诊断工具（已剔除冗余 IPTV 组播代理组件）
 
@@ -35,26 +36,19 @@ uci set network.pon0_3961.ifname='pon0'
 uci set network.pon0_3961.vid='3961'
 uci set network.pon0_3961.name='pon0.3961'
 ```
-> 若局端通过 OMCI/OAM 自动剥离了 VLAN（Untagged），则无需创建 `8021q` 设备，直接将下方 `wan.device` 设为 `'pon0'`。可用 `pppoe-discovery -I pon0.3961` 验证能否收到 PADO。
+> 若局端通过 OMCI/OAM 自动剥离了 VLAN（Untagged），则无需创建 `8021q` 设备，保持 `wan.device='pon0'` 即可。可用 `pppoe-discovery -I pon0.3961` 验证能否收到 PADO。
 
-### 2.2 配置 PPPoE 与 IPv6（严禁 `ipv6='auto'` 与静态 `wan6` 混用）
-OpenWrt 默认带有一个指向裸口 `pon0` 的静态 `network.wan6`。改为 PPPoE 时**必须二选一**，否则要么拿不到 IPv6，要么在 `pppoe-wan` 上同时拉起两个 `odhcp6c` 抢占前缀：
+### 2.2 填写宽带账号与绑定 VLAN（出厂已预置 `wan` + `@wan` 的 `wan6`）
+新固件首次启动已由 `config_generate` 自动生成标准 PPPoE 双栈结构（`wan.ipv6='1'` + `wan6.device='@wan'`），**无需改动 `wan6`**，只需修改 `wan` 的设备与账号密码：
 
-- **推荐方案（简洁自动模式：使用 `wan_6`）**
-  ```sh
-  uci -q delete network.wan6
-  uci set network.wan='interface'
-  uci set network.wan.proto='pppoe'
-  uci set network.wan.device='pon0.3961'
-  uci set network.wan.username='宽带账号'
-  uci set network.wan.password='宽带密码'
-  uci set network.wan.ipv6='auto'
-  uci set network.wan.keepalive='5 5'
-  uci commit network
-  /etc/init.d/network reload
-  ```
-- **备选方案（手动精细控制 `wan6` 参数）**
-  - 设 `network.wan.ipv6='1'`，保留 `network.wan6` 并将其 `device` 改为 `'@wan'`（`proto='dhcpv6'`、`reqaddress='try'`、`reqprefix='auto'`）。
+```sh
+uci set network.wan.device='pon0.3961'
+uci set network.wan.username='宽带账号'
+uci set network.wan.password='宽带密码'
+uci commit network
+/etc/init.d/network reload
+```
+> **注意**：不要把 `wan.ipv6` 改成 `'auto'` 同时又保留静态 `wan6`（`device='@wan'`），否则 `netifd` 派生的 `wan_6` 会与静态 `wan6` 启动两个 `odhcp6c`。若改用纯桥接模式，直接停用或删除 `wan` / `wan6` 即可。
 
 ---
 
