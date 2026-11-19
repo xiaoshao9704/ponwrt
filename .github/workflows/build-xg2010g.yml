@@ -60,10 +60,22 @@ jobs:
           restore-keys: |
             ponwrt-xg2010g-dl-
 
-      - name: Install feeds
+      - name: Update feeds
+        run: ./scripts/feeds update -a
+
+      - name: Apply feed patches
         run: |
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          if [ -d patches/feeds ]; then
+            while IFS= read -r patch_file; do
+              feed_name="$(printf '%s\n' "$patch_file" | cut -d/ -f3)"
+              echo "Applying feed patch $patch_file to feeds/$feed_name"
+              git -C "feeds/$feed_name" apply --check "$PWD/$patch_file"
+              git -C "feeds/$feed_name" apply "$PWD/$patch_file"
+            done < <(find patches/feeds -type f -name '*.patch' | sort)
+          fi
+
+      - name: Install feeds
+        run: ./scripts/feeds install -a
 
       - name: Configure XG2010G
         run: |

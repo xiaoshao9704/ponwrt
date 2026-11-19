@@ -31,6 +31,12 @@ $(strip $(if $(CONFIG_PER_FEED_REPO), \
   $(PACKAGE_DIR)))
 endef
 
+# Only emit official feeds published on ImmortalWrt/OpenWrt snapshot mirrors.
+# Build-only feeds (pon_drivers, pon_userspace) are compiled into the image and
+# are not hosted under mirrors, which would otherwise cause apk update HTTP 404.
+DISTFEEDS_FEEDS := packages luci routing telephony video
+FEEDS_DISTFEED = $(filter $(DISTFEEDS_FEEDS),$(FEEDS_AVAILABLE))
+
 # 1: destination file
 define FeedSourcesAppendOPKG
 ( \
@@ -39,7 +45,7 @@ define FeedSourcesAppendOPKG
 	echo 'src/gz %d_base %U/packages/%A/base'; \
 	$(if $(CONFIG_BUILDBOT), \
 		echo 'src/gz %d_kmods %U/targets/%S/kmods/$(LINUX_VERSION)-$(LINUX_RELEASE)-$(LINUX_VERMAGIC)';) \
-	$(foreach feed,$(FEEDS_AVAILABLE), \
+	$(foreach feed,$(FEEDS_DISTFEED), \
 		$(if $(CONFIG_FEED_$(feed)), \
 			echo '$(if $(filter m,$(CONFIG_FEED_$(feed))),# )src/gz %d_$(feed) %U/packages/%A/$(feed)';)))) \
 ) >> $(1)
@@ -55,7 +61,7 @@ define FeedSourcesAppendAPK
 	echo '%U/packages/%A/base/packages.adb'; \
 	$(if $(CONFIG_BUILDBOT), \
 		echo '%U/targets/%S/kmods/$(LINUX_VERSION)-$(LINUX_RELEASE)-$(LINUX_VERMAGIC)/packages.adb';) \
-	$(foreach feed,$(FEEDS_AVAILABLE), \
+	$(foreach feed,$(FEEDS_DISTFEED), \
 		$(if $(CONFIG_FEED_$(feed)), \
 			echo '$(if $(filter m,$(CONFIG_FEED_$(feed))),# )%U/packages/%A/$(feed)/packages.adb';)))) \
 ) >> $(1)
