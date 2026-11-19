@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# Default XG2010G:
+# 1. Default LuCI language to Simplified Chinese (run after 99-default-settings).
+# 2. Enable Airoha PPE hardware flow offloading in firewall4 by default on fresh boot.
+
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+	gemtek,xg2010g|gemtek,xg2010g-ubi|gemtek,xg2010g-2g-ubi) ;;
+	*) exit 0 ;;
+esac
+
+if [ -f /etc/config/luci ]; then
+	case "$(uci -q get luci.main.lang)" in
+		''|auto)
+			uci set luci.main.lang='zh_cn' && uci commit luci
+			;;
+	esac
+fi
+
+if [ -f /etc/config/firewall ]; then
+	changed=0
+	if [ -z "$(uci -q get firewall.@defaults[0].flow_offloading)" ]; then
+		uci set firewall.@defaults[0].flow_offloading='1'
+		changed=1
+	fi
+	if [ -z "$(uci -q get firewall.@defaults[0].flow_offloading_hw)" ]; then
+		uci set firewall.@defaults[0].flow_offloading_hw='1'
+		changed=1
+	fi
+	[ "$changed" -eq 1 ] && uci commit firewall
+fi
+
+exit 0
