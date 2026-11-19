@@ -29,6 +29,7 @@ an7581_setup_interfaces()
 	gemtek,xg2010g)
 		# Panel order is two RTL8261N 10G ports, EN8811H 2.5G, then switch 1G.
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "pon0"
+		ucidef_set_hostname "XG2010G"
 		;;
 	fiberhome,hg5382a|\
 	fiberhome,hg5585f-ct)
